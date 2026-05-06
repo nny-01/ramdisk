@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RAMDisk I/O Waiting Simulator</title>
+<style>
+:root{
+  --navy:#122344;
+  --blue:#3478f6;
+  --green:#25b37a;
+  --orange:#ff9f43;
+  --red:#e45757;
+  --bg:#f4f7fb;
+  --card:#ffffff;
+  --text:#263247;
+  --muted:#6b7280;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;
+  background:linear-gradient(180deg,#eef5ff 0%,#f8fafc 100%);
+  color:var(--text);
+}
+.header{
+  background:var(--navy);
+  color:white;
+  padding:22px 18px 26px;
+  text-align:center;
+}
+.header h1{
+  margin:0;
+  font-size:26px;
+  letter-spacing:.3px;
+}
+.header p{
+  margin:8px 0 0;
+  font-size:14px;
+  opacity:.85;
+}
+.container{
+  max-width:960px;
+  margin:0 auto;
+  padding:18px;
+}
+.card{
+  background:var(--card);
+  border-radius:18px;
+  box-shadow:0 8px 24px rgba(18,35,68,.09);
+  padding:18px;
+  margin-bottom:16px;
+}
+.mode-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+button{
+  border:0;
+  border-radius:14px;
+  padding:15px 12px;
+  font-size:17px;
+  font-weight:700;
+  color:white;
+  cursor:pointer;
+  box-shadow:0 8px 16px rgba(0,0,0,.12);
+}
+.btn-ssd{background:var(--orange);}
+.btn-ram{background:var(--green);}
+.btn-reset{background:var(--blue); width:100%; margin-top:10px;}
+.small{
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.7;
+}
+.status-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.status{
+  border-radius:16px;
+  padding:14px;
+  background:#f7f9fc;
+  border:1px solid #e9eef6;
+}
+.status-title{
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.status-value{
+  font-size:20px;
+  font-weight:800;
+}
+.cpu{
+  width:150px;
+  height:150px;
+  border-radius:28px;
+  margin:12px auto;
+  background:linear-gradient(145deg,#3b82f6,#1d4ed8);
+  color:white;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  box-shadow:0 16px 30px rgba(52,120,246,.25);
+  transition:.3s;
+}
+.cpu.waiting{
+  background:linear-gradient(145deg,#ff9f43,#d97706);
+  animation:pulse 1s infinite;
+}
+.cpu.fast{
+  background:linear-gradient(145deg,#25b37a,#15835b);
+}
+.cpu.blocked{
+  background:linear-gradient(145deg,#e45757,#b91c1c);
+  animation:pulse .7s infinite;
+}
+@keyframes pulse{
+  0%{transform:scale(1);}
+  50%{transform:scale(1.04);}
+  100%{transform:scale(1);}
+}
+.cpu-main{
+  font-size:25px;
+  font-weight:900;
+}
+.cpu-sub{
+  font-size:13px;
+  opacity:.9;
+  margin-top:6px;
+}
+.pipeline{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+  margin-top:12px;
+}
+.step{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border-radius:14px;
+  padding:12px;
+  background:#f8fafc;
+  border:1px solid #e5eaf2;
+  transition:.25s;
+}
+.dot{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:#cbd5e1;
+  flex:0 0 auto;
+}
+.step.active{
+  background:#eef5ff;
+  border-color:#bfdbfe;
+}
+.step.active .dot{
+  background:var(--blue);
+  box-shadow:0 0 0 6px rgba(52,120,246,.16);
+}
+.step.wait .dot{background:var(--orange);}
+.step.done .dot{background:var(--green);}
+.step.bad .dot{background:var(--red);}
+.progress-wrap{
+  background:#e5eaf2;
+  border-radius:999px;
+  height:18px;
+  overflow:hidden;
+  margin:14px 0 8px;
+}
+.progress{
+  width:0%;
+  height:100%;
+  background:linear-gradient(90deg,var(--blue),var(--green));
+  border-radius:999px;
+  transition:width .25s;
+}
+.chart{
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  gap:38px;
+  height:190px;
+  margin-top:12px;
+}
+.bar-box{text-align:center;width:120px;}
+.bar{
+  width:76px;
+  margin:0 auto 8px;
+  border-radius:12px 12px 4px 4px;
+  color:white;
+  font-weight:900;
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  padding-top:8px;
+  transition:height .7s;
+  min-height:28px;
+}
+.bar.ssd{background:var(--orange);}
+.bar.ram{background:var(--green);}
+.result{
+  font-size:18px;
+  font-weight:800;
+  line-height:1.6;
+}
+.quiz{
+  display:grid;
+  gap:10px;
+}
+.option{
+  border:1px solid #dbe3ef;
+  background:#f8fafc;
+  color:var(--text);
+  box-shadow:none;
+  font-size:15px;
+  text-align:left;
+}
+.option.correct{background:#e9f8f1;border-color:#25b37a;}
+.option.wrong{background:#fdecec;border-color:#e45757;}
+.footer{
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+  padding:20px 0 28px;
+}
+.badge{
+  display:inline-block;
+  padding:4px 9px;
+  border-radius:999px;
+  background:#edf4ff;
+  color:var(--blue);
+  font-weight:800;
+  font-size:12px;
+  margin-bottom:8px;
+}
+@media (max-width:640px){
+  .header h1{font-size:22px;}
+  .mode-row,.status-grid{grid-template-columns:1fr;}
+  .chart{gap:18px;}
+  .cpu{width:132px;height:132px;}
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>RAMDisk I/O Waiting Simulator</h1>
+    <p>手机可操作：观察 CPU 为什么会等待磁盘 I/O，以及 RAMDisk 如何减少等待</p>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <span class="badge">课堂互动实验</span>
+      <h2 style="margin:4px 0 8px;">选择一种存储方式</h2>
+      <p class="small">模拟程序创建 100 个临时文件。SSD/HDD 模式会出现明显 I/O 等待；RAMDisk 模式把临时文件放到 RAM 中，等待时间更短。</p>
+      <div class="mode-row">
+        <button class="btn-ssd" onclick="startSim('ssd')">使用 SSD/HDD</button>
+        <button class="btn-ram" onclick="startSim('ram')">使用 RAMDisk</button>
+      </div>
+      <button class="btn-reset" onclick="resetAll()">重置实验</button>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">CPU 状态可视化</h2>
+      <div id="cpu" class="cpu">
+        <div class="cpu-main" id="cpuMain">Idle</div>
+        <div class="cpu-sub" id="cpuSub">等待开始</div>
+      </div>
+      <div class="status-grid">
+        <div class="status">
+          <div class="status-title">当前模式</div>
+          <div class="status-value" id="modeText">未开始</div>
+        </div>
+        <div class="status">
+          <div class="status-title">CPU Waiting 时间</div>
+          <div class="status-value" id="waitText">0.0 s</div>
+        </div>
+      </div>
+      <div class="progress-wrap">
+        <div id="progress" class="progress"></div>
+      </div>
+      <div class="small" id="progressText">文件创建进度：0 / 100</div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">I/O 流程</h2>
+      <div class="pipeline">
+        <div class="step" id="s1"><div class="dot"></div><div>1. 应用程序发起 write()：准备创建临时文件</div></div>
+        <div class="step" id="s2"><div class="dot"></div><div>2. 进入操作系统内核：交给文件系统处理</div></div>
+        <div class="step" id="s3"><div class="dot"></div><div>3. 判断底层设备：SSD/HDD 或 RAMDisk</div></div>
+        <div class="step" id="s4"><div class="dot"></div><div>4. 执行 I/O：慢速磁盘访问或高速 RAM 访问</div></div>
+        <div class="step" id="s5"><div class="dot"></div><div>5. I/O 完成：程序继续运行</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">结果对比</h2>
+      <div class="chart">
+        <div class="bar-box">
+          <div id="ssdBar" class="bar ssd" style="height:28px;">SSD</div>
+          <div class="small">SSD/HDD<br><span id="ssdTime">-</span></div>
+        </div>
+        <div class="bar-box">
+          <div id="ramBar" class="bar ram" style="height:28px;">RAM</div>
+          <div class="small">RAMDisk<br><span id="ramTime">-</span></div>
+        </div>
+      </div>
+      <div id="result" class="result">先选择一种模式开始实验。</div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">小问题：哪个数据最适合放进 RAMDisk？</h2>
+      <div class="quiz">
+        <button class="option" onclick="answer(this,false)">A. 毕业论文最终版</button>
+        <button class="option" onclick="answer(this,true)">B. 浏览器缓存 / 编译中间文件</button>
+        <button class="option" onclick="answer(this,false)">C. 家庭照片备份</button>
+        <button class="option" onclick="answer(this,false)">D. 系统重要数据库主文件</button>
+      </div>
+      <p class="small" id="quizText">提示：RAMDisk 适合临时、高频、可丢失的数据。</p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">一句话总结</h2>
+      <p style="font-size:18px;line-height:1.7;margin-bottom:0;">
+        RAMDisk 的核心是：把原本慢速的磁盘 I/O，变成高速的 RAM 访问，从而减少程序阻塞等待时间。
+      </p>
+    </div>
+
+    <div class="footer">该实验为课堂可视化模拟，不依赖 Python、Linux、管理员权限或真实 RAMDisk 软件。</div>
+  </div>
+
+<script>
+let running = false;
+let lastSSD = null;
+let lastRAM = null;
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function setStep(n, cls){
+  for(let i=1;i<=5;i++){
+    const el=document.getElementById("s"+i);
+    el.className="step";
+    if(i<n) el.classList.add("done");
+    if(i===n) el.classList.add(cls || "active");
+  }
+}
+
+function setCPU(state, main, sub){
+  const cpu=document.getElementById("cpu");
+  cpu.className="cpu " + state;
+  document.getElementById("cpuMain").innerText=main;
+  document.getElementById("cpuSub").innerText=sub;
+}
+
+async function startSim(mode){
+  if(running) return;
+  running = true;
+
+  const isSSD = mode === "ssd";
+  const total = 100;
+  const delay = isSSD ? 42 : 8;
+  let waiting = 0;
+
+  document.getElementById("modeText").innerText = isSSD ? "SSD/HDD 模式" : "RAMDisk 模式";
+  document.getElementById("result").innerText = "实验进行中……观察 CPU 状态和 I/O 流程。";
+  document.getElementById("progress").style.width = "0%";
+  document.getElementById("progressText").innerText = "文件创建进度：0 / 100";
+  document.getElementById("waitText").innerText = "0.0 s";
+
+  setStep(1,"active");
+  setCPU("", "Run", "程序发起 write()");
+  await sleep(600);
+
+  setStep(2,"active");
+  setCPU("", "Kernel", "进入内核态");
+  await sleep(650);
+
+  setStep(3,"active");
+  setCPU("", "Check", "判断底层设备");
+  await sleep(650);
+
+  setStep(4, isSSD ? "wait" : "active");
+  setCPU(isSSD ? "blocked" : "fast",
+         isSSD ? "Waiting" : "Fast",
+         isSSD ? "等待 SSD/HDD 返回" : "直接访问 RAM");
+
+  for(let i=1;i<=total;i++){
+    await sleep(delay);
+    waiting += isSSD ? delay/1000 : delay/1000*0.25;
+    document.getElementById("progress").style.width = i + "%";
+    document.getElementById("progressText").innerText = "文件创建进度：" + i + " / 100";
+    document.getElementById("waitText").innerText = waiting.toFixed(1) + " s";
+  }
+
+  setStep(5,"done");
+  setCPU("fast", "Done", "程序继续运行");
+
+  const time = isSSD ? 8.0 : 1.1;
+  if(isSSD){
+    lastSSD = time;
+    document.getElementById("ssdTime").innerText = time.toFixed(1) + " s";
+    document.getElementById("ssdBar").style.height = "160px";
+  }else{
+    lastRAM = time;
+    document.getElementById("ramTime").innerText = time.toFixed(1) + " s";
+    document.getElementById("ramBar").style.height = "46px";
+  }
+
+  if(lastSSD && lastRAM){
+    const speedup = (lastSSD / lastRAM).toFixed(1);
+    document.getElementById("result").innerHTML =
+      "对比结果：SSD/HDD 用时 <b>" + lastSSD.toFixed(1) +
+      " s</b>，RAMDisk 用时 <b>" + lastRAM.toFixed(1) +
+      " s</b>，RAMDisk 约快 <b>" + speedup + " 倍</b>。";
+  }else{
+    document.getElementById("result").innerText =
+      isSSD ? "SSD/HDD 模式完成：等待时间明显较长。再试试 RAMDisk 模式。" :
+              "RAMDisk 模式完成：等待时间明显较短。再试试 SSD/HDD 模式。";
+  }
+
+  running = false;
+}
+
+function resetAll(){
+  running = false;
+  lastSSD = null;
+  lastRAM = null;
+  document.getElementById("modeText").innerText="未开始";
+  document.getElementById("waitText").innerText="0.0 s";
+  document.getElementById("progress").style.width="0%";
+  document.getElementById("progressText").innerText="文件创建进度：0 / 100";
+  document.getElementById("ssdTime").innerText="-";
+  document.getElementById("ramTime").innerText="-";
+  document.getElementById("ssdBar").style.height="28px";
+  document.getElementById("ramBar").style.height="28px";
+  document.getElementById("result").innerText="先选择一种模式开始实验。";
+  setCPU("", "Idle", "等待开始");
+  for(let i=1;i<=5;i++) document.getElementById("s"+i).className="step";
+  document.querySelectorAll(".option").forEach(b=>{b.classList.remove("correct","wrong");});
+  document.getElementById("quizText").innerText="提示：RAMDisk 适合临时、高频、可丢失的数据。";
+}
+
+function answer(btn, ok){
+  document.querySelectorAll(".option").forEach(b=>{b.classList.remove("correct","wrong");});
+  btn.classList.add(ok ? "correct" : "wrong");
+  document.getElementById("quizText").innerText =
+    ok ? "回答正确：缓存和编译中间文件属于临时、高频、可丢失数据。" :
+         "这个不适合：RAMDisk 断电会丢失数据，不应保存重要长期文件。";
+}
+</script>
+</body>
+</html>
